@@ -1,0 +1,11 @@
+# Mühit dəyişənləri (əsl API açarı burada saxlanılır - repository-yə YÜKLƏNMİR)
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Loglar
+logs/*.jsonl
