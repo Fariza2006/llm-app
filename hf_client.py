@@ -1,12 +1,16 @@
 """
 hf_client.py
 -------------
-Hugging Face Inference API ilə əlaqə qurmaq üçün əsas modul.
+Hugging Face Inference API (router / Inference Providers) ilə əlaqə qurmaq üçün əsas modul.
 (Anthropic/OpenAI-dan fərqli olaraq PULSUZDUR - kredit kartı tələb etmir.)
 
 Checkpoint 1: API inteqrasiyası
 - API açarı (HF token) environment variable-dan (.env) oxunur, kodda HARDCODE edilmir.
 - Request/response düzgün formalaşdırılır və idarə olunur.
+
+QEYD: Hugging Face köhnə "api-inference.huggingface.co" ünvanını 2026-cı ildə
+bağlayıb (410 Gone). Yeni, OpenAI-uyğun (OpenAI-compatible) endpoint istifadə olunur:
+https://router.huggingface.co/v1/chat/completions
 
 Hugging Face-də pulsuz hesab və token necə alınır:
 1. https://huggingface.co/join -> pulsuz qeydiyyat (kart lazım deyil)
@@ -22,13 +26,14 @@ load_dotenv()
 
 
 class HFClient:
-    """Hugging Face Inference API ilə işləmək üçün nazik (thin) wrapper sinif."""
+    """Hugging Face router (Inference Providers) API ilə işləmək üçün nazik wrapper sinif."""
 
-    # Mətn generasiyası üçün pulsuz, geniş yayılmış açıq model
-    DEFAULT_MODEL = "HuggingFaceH4/zephyr-7b-beta"
+    # Pulsuz "Inference Providers" tier-i üzərindən əlçatan açıq model
+    DEFAULT_MODEL = "meta-llama/Llama-3.1-8B-Instruct"
+    API_URL = "https://router.huggingface.co/v1/chat/completions"
 
     def __init__(self, model: str | None = None):
-        # API açarını (token) environment variable-dan oxuyuruq (heç vaxt kodda yazılmır!)
+        # API tokenini environment variable-dan oxuyuruq (heç vaxt kodda yazılmır!)
         self.api_token = os.getenv("HF_API_TOKEN")
 
         if not self.api_token:
@@ -39,48 +44,48 @@ class HFClient:
             )
 
         self.model = model or os.getenv("HF_MODEL", self.DEFAULT_MODEL)
-        self.api_url = f"https://api-inference.huggingface.co/models/{self.model}"
-        self.headers = {"Authorization": f"Bearer {self.api_token}"}
+        self.headers = {
+            "Authorization": f"Bearer {self.api_token}",
+            "Content-Type": "application/json",
+        }
 
     def send_message(
         self,
         user_prompt: str,
         system_prompt: str | None = None,
-        max_new_tokens: int = 256,
+        max_tokens: int = 256,
         temperature: float = 0.7,
         timeout: int = 30,
     ) -> dict:
         """
-        Hugging Face Inference API-yə sorğu göndərir və cavabı
-        strukturlaşdırılmış şəkildə qaytarır.
+        Hugging Face router API-yə (OpenAI-uyğun format) sorğu göndərir və
+        cavabı strukturlaşdırılmış şəkildə qaytarır.
 
         Return dəyəri (dict):
             {
                 "text": str,             # modelin mətn cavabı
                 "model": str,             # istifadə olunan model adı
                 "elapsed_seconds": float, # sorğunun cavab müddəti
+                "usage": dict | None,     # token istifadəsi (varsa)
                 "raw_response": object    # API-dan gələn xam JSON
             }
         """
-        # Chat formatını sadə prompt-a çeviririk (bir çox açıq modellər bu formatı gözləyir)
-        full_prompt = ""
+        messages = []
         if system_prompt:
-            full_prompt += f"<|system|>\n{system_prompt}</s>\n"
-        full_prompt += f"<|user|>\n{user_prompt}</s>\n<|assistant|>\n"
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": user_prompt})
 
         payload = {
-            "inputs": full_prompt,
-            "parameters": {
-                "max_new_tokens": max_new_tokens,
-                "temperature": temperature,
-                "return_full_text": False,
-            },
+            "model": self.model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
         }
 
         # --- Request ---
         start = time.time()
         response = requests.post(
-            self.api_url, headers=self.headers, json=payload, timeout=timeout
+            self.API_URL, headers=self.headers, json=payload, timeout=timeout
         )
         elapsed = time.time() - start
 
@@ -92,17 +97,17 @@ class HFClient:
 
         data = response.json()
 
-        # API bəzən model "yüklənir" mesajı ilə cavab verir (soyuq başlanğıc)
-        if isinstance(data, dict) and "error" in data:
+        if "error" in data:
             raise RuntimeError(f"Hugging Face API cavab xətası: {data['error']}")
 
-        # Normal halda cavab: [{"generated_text": "..."}]
-        generated_text = data[0]["generated_text"] if isinstance(data, list) else str(data)
+        # OpenAI-uyğun format: choices[0].message.content
+        generated_text = data["choices"][0]["message"]["content"]
 
         return {
             "text": generated_text.strip(),
             "model": self.model,
             "elapsed_seconds": round(elapsed, 2),
+            "usage": data.get("usage"),
             "raw_response": data,
         }
 
@@ -121,3 +126,4 @@ if __name__ == "__main__":
     print("\n=== METADATA ===")
     print(f"Model: {result['model']}")
     print(f"Cavab müddəti: {result['elapsed_seconds']} saniyə")
+    print(f"Token istifadəsi: {result['usage']}")
