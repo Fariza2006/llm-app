@@ -172,3 +172,49 @@ full_text = client.send_message_stream(
     on_chunk=my_callback,
 )
 ```
+
+---
+
+# Checkpoint 4: Xəta İdarəetməsi
+
+`send_message()` metodu indi xətaları **iki kateqoriyaya** bölür və fərqli davranır:
+
+## 1. Qalıcı xətalar (retry OLUNMUR — dərhal bildirilir)
+- **401 (etibarsız token)** → `PermissionError` — retry etmək faydasızdır, çünki token dəyişmədikcə nəticə eyni olacaq.
+- **400 (səhv sorğu formatı)** → `ValueError` — sorğunun özündə problem var, təkrar göndərmək kömək etməz.
+
+## 2. Müvəqqəti xətalar (avtomatik RETRY olunur, exponential backoff ilə)
+- **429 (rate limit — həddindən çox sorğu)**
+- **500 / 502 / 503 / 504 (server tərəfli müvəqqəti xətalar)**
+- **Timeout (vaxt aşımı)** və **ConnectionError (şəbəkə kəsilməsi)**
+
+Bu hallarda kod avtomatik olaraq **3 dəfəyə qədər** yenidən cəhd edir, hər cəhd arasında gözləmə vaxtını ikiqat artırır (**exponential backoff**: 2s → 4s → 8s). 3 cəhddən sonra da uğursuz olarsa, aydın xəta mesajı ilə dayanır.
+
+## Nümunə davranış
+
+```python
+from hf_client import HFClient
+
+client = HFClient()
+
+try:
+    result = client.send_message(user_prompt="Salam!", max_retries=3)
+    print(result["text"])
+except PermissionError as e:
+    print(f"Token problemi: {e}")  # istifadəçiyə .env-i yoxlamağı təklif et
+except ValueError as e:
+    print(f"Sorğu formatı səhvdir: {e}")
+except RuntimeError as e:
+    print(f"API uzun müddət cavab vermədi: {e}")  # bütün retry-lar bitdi
+```
+
+## Test nəticəsi (real, səhv token ilə)
+
+```
+=== XƏTA İDARƏETMƏSİ TESTİ (Checkpoint 4) ===
+Səhv token ilə sınaq (401 gözlənilir, retry OLUNMAMALIDIR):
+Gözlənilən nəticə alındı (retry edilmədi): API tokeni etibarsızdır və ya
+vaxtı bitib (401). Zəhmət olmasa .env faylındakı HF_API_TOKEN-i yoxlayın.
+```
+
+Bu test göstərir ki, sistem 401 xətasında **dərhal** dayanır (3 dəfə boş yerə cəhd etmir), lakin 429/500 kimi müvəqqəti xətalarda avtomatik retry edəcək.

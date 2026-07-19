@@ -25,6 +25,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Checkpoint 4: hansı xətalarda yenidən cəhd (retry) edilməli
+# 429 = Rate limit (həddindən çox sorğu), 500/502/503/504 = server tərəfli müvəqqəti xətalar
+RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+MAX_RETRIES = 3
+BASE_BACKOFF_SECONDS = 2  # hər cəhddə ikiqat artır: 2s, 4s, 8s
+
 
 class HFClient:
     """Hugging Face router (Inference Providers) API ilə işləmək üçün nazik wrapper sinif."""
@@ -57,10 +63,18 @@ class HFClient:
         max_tokens: int = 256,
         temperature: float = 0.7,
         timeout: int = 30,
+        max_retries: int = MAX_RETRIES,
     ) -> dict:
         """
         Hugging Face router API-yə (OpenAI-uyğun format) sorğu göndərir və
         cavabı strukturlaşdırılmış şəkildə qaytarır.
+
+        Checkpoint 4: Xəta idarəetməsi
+        - Rate limit (429) və müvəqqəti server xətaları (500/502/503/504) üçün
+          exponential backoff ilə avtomatik yenidən cəhd (retry) edilir.
+        - Timeout (vaxt aşımı) və şəbəkə xətaları da retry olunur.
+        - Qalıcı xətalar (401 - səhv token, 400 - səhv sorğu) DƏRHAL, retry
+          olunmadan aydın mesajla bildirilir (çünki yenidən cəhd onları düzəltməz).
 
         Return dəyəri (dict):
             {
@@ -83,34 +97,84 @@ class HFClient:
             "temperature": temperature,
         }
 
-        # --- Request ---
-        start = time.time()
-        response = requests.post(
-            self.API_URL, headers=self.headers, json=payload, timeout=timeout
-        )
-        elapsed = time.time() - start
+        last_error = None
 
-        # --- Response idarəetməsi ---
-        if response.status_code != 200:
-            raise RuntimeError(
-                f"Hugging Face API xətası (status {response.status_code}): {response.text}"
-            )
+        for attempt in range(1, max_retries + 1):
+            try:
+                start = time.time()
+                response = requests.post(
+                    self.API_URL, headers=self.headers, json=payload, timeout=timeout
+                )
+                elapsed = time.time() - start
 
-        data = response.json()
+                # --- Qalıcı (retry etməli olmayan) xətalar ---
+                if response.status_code == 401:
+                    raise PermissionError(
+                        "API tokeni etibarsızdır və ya vaxtı bitib (401). "
+                        "Zəhmət olmasa .env faylındakı HF_API_TOKEN-i yoxlayın."
+                    )
+                if response.status_code == 400:
+                    raise ValueError(
+                        f"Sorğu formatı səhvdir (400 Bad Request): {response.text}"
+                    )
 
-        if "error" in data:
-            raise RuntimeError(f"Hugging Face API cavab xətası: {data['error']}")
+                # --- Müvəqqəti (retry oluna bilən) xətalar ---
+                if response.status_code in RETRYABLE_STATUS_CODES:
+                    last_error = RuntimeError(
+                        f"Müvəqqəti API xətası (status {response.status_code}): "
+                        f"{response.text}"
+                    )
+                    raise last_error
 
-        # OpenAI-uyğun format: choices[0].message.content
-        generated_text = data["choices"][0]["message"]["content"]
+                # --- Digər gözlənilməz xətalar ---
+                if response.status_code != 200:
+                    raise RuntimeError(
+                        f"Hugging Face API xətası (status {response.status_code}): "
+                        f"{response.text}"
+                    )
 
-        return {
-            "text": generated_text.strip(),
-            "model": self.model,
-            "elapsed_seconds": round(elapsed, 2),
-            "usage": data.get("usage"),
-            "raw_response": data,
-        }
+                # --- Uğurlu cavab ---
+                data = response.json()
+
+                if "error" in data:
+                    raise RuntimeError(f"Hugging Face API cavab xətası: {data['error']}")
+
+                generated_text = data["choices"][0]["message"]["content"]
+
+                return {
+                    "text": generated_text.strip(),
+                    "model": self.model,
+                    "elapsed_seconds": round(elapsed, 2),
+                    "usage": data.get("usage"),
+                    "raw_response": data,
+                }
+
+            except (PermissionError, ValueError):
+                # Qalıcı xətalar - retry etmədən dərhal yuxarı ötür
+                raise
+
+            except (
+                requests.exceptions.Timeout,
+                requests.exceptions.ConnectionError,
+                RuntimeError,
+            ) as e:
+                last_error = e
+                if attempt < max_retries:
+                    backoff = BASE_BACKOFF_SECONDS * (2 ** (attempt - 1))
+                    print(
+                        f"[Xəbərdarlıq] Cəhd {attempt}/{max_retries} uğursuz oldu "
+                        f"({type(e).__name__}: {e}). {backoff}s sonra yenidən cəhd olunur..."
+                    )
+                    time.sleep(backoff)
+                else:
+                    # Bütün cəhdlər bitdi - son xətanı aydın mesajla bildir
+                    raise RuntimeError(
+                        f"{max_retries} cəhddən sonra da API-dən cavab alınmadı. "
+                        f"Son xəta: {e}"
+                    ) from e
+
+        # Nəzəri olaraq bura çatmamalıdır, amma təhlükəsizlik üçün:
+        raise RuntimeError(f"Sorğu uğursuz oldu: {last_error}")
 
     def send_message_stream(
         self,
@@ -227,3 +291,15 @@ if __name__ == "__main__":
         user_prompt="Süni intellektin 3 əsas faydasını sadala.",
     )
     print(f"\n(Tam yığılmış mətnin uzunluğu: {len(streamed_text)} simvol)")
+
+    print("\n\n=== XƏTA İDARƏETMƏSİ TESTİ (Checkpoint 4) ===")
+    print("Səhv token ilə sınaq (401 gözlənilir, retry OLUNMAMALIDIR):")
+    try:
+        bad_client = HFClient()
+        bad_client.api_token = "hf_yanlish_token_test_ucun"
+        bad_client.headers["Authorization"] = f"Bearer {bad_client.api_token}"
+        bad_client.send_message(user_prompt="test", max_retries=3)
+    except PermissionError as e:
+        print(f"Gözlənilən nəticə alındı (retry edilmədi): {e}")
+    except Exception as e:
+        print(f"Fərqli xəta növü alındı: {type(e).__name__}: {e}")
