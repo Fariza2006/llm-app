@@ -71,7 +71,55 @@ https://huggingface.co/settings/tokens
 ```
 llm-app/
 ├── hf_client.py       # Əsas API client (Checkpoint 1)
+├── support_agent.py   # Prompt engineering - müştəri dəstəyi (Checkpoint 2)
 ├── .env.example       # Token nümunəsi (real token YOX)
 ├── .gitignore         # .env faylını repo-dan qoruyur
 └── README.md
 ```
+
+---
+
+# Checkpoint 2: Prompt Engineering
+
+`support_agent.py` faylı müştəri dəstəyi cavab generatoru üçün strukturlaşdırılmış prompt sistemini təqdim edir.
+
+## Struktur
+
+1. **System prompt** (dəyişməz hissə) — modelin rolunu, tonunu və sərt qaydalarını təyin edir:
+   - Nəzakətli/empatik olmaq
+   - Cavabın qısa olması (max 4-5 cümlə)
+   - Yalan məlumat uydurmamaq
+   - Mürəkkəb məsələləri insan operatora yönləndirmək
+   - Həmişə Azərbaycan dilində cavab vermək
+
+2. **Few-shot nümunələr** — modelə 3 real ssenari və "yaxşı cavab" nümunəsi göstərilir ki, model formatı və tonu təqlid etsin.
+
+3. **User prompt** (dinamik hissə) — hər sorğuda dəyişir: few-shot nümunələri + (əgər varsa) sifariş konteksti + real müştəri mesajı.
+
+## İşlətmək
+
+```bash
+python support_agent.py
+```
+
+## Nümunə sorğu/cavab logu
+
+**Sorğu:**
+```
+Müştəri: Sifariş #4521 hələ də çatmayıb, izləmə linki də işləmir.
+Kontekst: Sifariş #4521, 6 gün əvvəl verilib, kuryer şirkəti: Bravo Kuryer.
+```
+
+**Cavab (nümunə format):**
+```
+Köməkçi: Narahatçılığınızı tam başa düşürəm, 6 gün gecikmə həqiqətən
+narahatedicidir. Sifariş #4521-i Bravo Kuryer ilə yoxlayıram və sizə
+tezliklə dəqiq status barədə məlumat verəcəm. Əgər izləmə linki
+işləməyə davam edərsə, bu barədə də operatorumuza bildirəcəm.
+```
+
+## Niyə belə qurulub
+
+- System prompt-un ayrılması modelin davranışını **sabit** saxlayır (hər sorğuda təkrarlanmır).
+- Few-shot nümunələr modelin cavab formatını, uzunluğunu və tonunu **öngörülən** edir — xüsusilə kiçik/açıq modellərdə bu, keyfiyyəti xeyli artırır.
+- `temperature=0.4` seçilib ki, dəstək cavabları həddindən artıq "yaradıcı" olmasın, sabit və peşəkar qalsın.
