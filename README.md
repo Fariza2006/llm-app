@@ -218,3 +218,49 @@ vaxtı bitib (401). Zəhmət olmasa .env faylındakı HF_API_TOKEN-i yoxlayın.
 ```
 
 Bu test göstərir ki, sistem 401 xətasında **dərhal** dayanır (3 dəfə boş yerə cəhd etmir), lakin 429/500 kimi müvəqqəti xətalarda avtomatik retry edəcək.
+
+---
+
+# Checkpoint 5: Çıxış Parsing/Validasiyası
+
+`structured_output.py` modeldən **JSON formatında** strukturlaşdırılmış cavab alır və modelin "həmişə təmiz JSON qaytaracağını" **fərz etmir** — əksinə, format pozuntularını tutub düzəltməyə çalışır.
+
+## Model bəzən nə edir (real problem)
+
+- JSON-un ətrafına izah əlavə edir: `Əlbəttə, budur JSON: {...} Ümid edirəm kömək etdi!`
+- Markdown code-block işarəsi qoyur: ` ```json\n{...}\n``` `
+- Format tam pozula bilər (mötərizə bağlanmır, JSON heç yaranmır və s.)
+
+## Necə həll olunub
+
+1. **`_extract_json_candidate()`** — mətndən markdown işarələrini təmizləyir, sonra ilk `{` və son `}` arasındakı hissəni çıxarır (izahedici mətni ata bilir).
+2. **`_try_parse_json()`** — çıxarılan hissəni `json.loads()` ilə parse etməyə çalışır, uğursuz olarsa xəta atmadan `None` qaytarır.
+3. **`get_structured_response()`** — əgər parse uğursuz olarsa, ya da tələb olunan açarlar (`required_keys`) əskikdirsə, modelə **aydın düzəliş təlimatı ilə yenidən sorğu göndərir** (max 3 cəhd). Bütün cəhdlər uğursuz olarsa, `StructuredOutputError` aydın mesajla atılır.
+
+## İşlətmək
+
+```bash
+python structured_output.py
+```
+
+## Test nəticəsi (şəbəkəsiz, yalnız parsing məntiqi)
+
+```
+Test 1: OK -> {'title': 'Test', 'summary': 'Qisa', 'keywords': ['a', 'b']}   # təmiz JSON
+Test 2: OK -> {'title': 'Test', 'summary': 'Qisa', 'keywords': ['a']}         # JSON + izahedici mətn
+Test 3: OK -> {'title': 'Test', 'summary': 'Qisa', 'keywords': []}            # markdown ```json``` bloku
+Test 4: FAILED (gözlənilən) -> None                                           # həqiqətən korlanmış JSON
+```
+
+Bu, tapşırıqda tələb olunan **edge-case testini** dəqiq göstərir: model "izahedici mətn" və ya "format pozuntusu" versə belə, kod bunu tutur və düzgün işləyir; yalnız həqiqətən bərpa olunmaz JSON-da (test 4) aydın xəta ilə dayanır.
+
+## Nümunə istifadə
+
+```python
+from structured_output import summarize_text_structured
+
+result = summarize_text_structured("Uzun mətn burada...")
+print(result["title"])      # str
+print(result["summary"])    # str
+print(result["keywords"])   # list[str]
+```
