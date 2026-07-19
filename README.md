@@ -129,3 +129,46 @@ işləməyə davam edərsə, bu barədə də operatorumuza bildirəcəm.
 İlk versiyada model bəzən prompt formatını təkrarlayırdı (özü "Müştəri:" sətrini yazırdı). Bunu `build_user_prompt`-a aydın təlimat ("YALNIZ köməkçinin sözlərini yaz") əlavə edərək və `_clean_response()` post-processing funksiyası ilə həll etdik.
 
 Qalan kiçik məhdudiyyət: kiçik open-source model (Llama-3.1-8B) bəzən fərqli mövzulu sorğularda (məsələn rəng problemi) ilk few-shot nümunənin sözlərini ("gecikmə", "sifariş statusu") səhvən köçürür. Bu, real API-lərlə edge-case testinin nümunəsidir — production mühitdə bu, daha güclü model (məs. GPT-4/Claude) və ya daha ciddi output-validasiyası ilə azaldıla bilər.
+
+---
+
+# Checkpoint 3: Streaming Cavab İdarəetməsi
+
+`hf_client.py`-dəki `send_message_stream()` metodu Hugging Face router API-sindən **real vaxtda, hissə-hissə (token-token)** cavab almağı təmin edir.
+
+## Necə işləyir
+
+- Request-ə `"stream": true` parametri əlavə olunur.
+- API cavabı **Server-Sent Events (SSE)** formatında qaytarır — hər sətir `data: {...}` şəklində gəlir, sonda `data: [DONE]` göndərilir.
+- Kod `response.iter_lines()` ilə axını sətir-sətir oxuyur, hər JSON parça (`chunk`) daxilindəki `delta.content` hissəsini çıxarır və dərhal ekrana yazır (və ya verilmiş `on_chunk` callback-inə ötürür).
+- Korlanmış/natamam JSON chunk-lar səssizcə keçilir (kod çökmür).
+- Stream bitdikdən sonra tam yığılmış mətn `str` kimi qaytarılır.
+
+## İşlətmək
+
+```bash
+python hf_client.py
+```
+
+Konsolda mətnin hərf-hərf/söz-söz canlı şəkildə yazıldığını görəcəksiniz (ChatGPT/Claude interfeysindəki kimi).
+
+## Nümunə istifadə (öz kodunda)
+
+```python
+from hf_client import HFClient
+
+client = HFClient()
+
+# Standart: mətn birbaşa terminala yazılır
+client.send_message_stream(user_prompt="Bakı haqqında qısa məlumat ver.")
+
+# Öz callback-inlə (məsələn, veb interfeysdə hər hissəni UI-ə göndərmək üçün)
+def my_callback(chunk: str):
+    # burada chunk-ı UI-ə, WebSocket-ə və s. göndərmək olar
+    print(f"[YENİ HİSSƏ]: {chunk}")
+
+full_text = client.send_message_stream(
+    user_prompt="Bakı haqqında qısa məlumat ver.",
+    on_chunk=my_callback,
+)
+```
