@@ -86,9 +86,34 @@ def build_user_prompt(customer_message: str, order_context: str | None = None) -
     if order_context:
         parts.append(f"Sifariş konteksti: {order_context}")
 
-    parts.append(f"\nİndi bu müştəriyə cavab yaz:\nMüştəri: {customer_message}\nKöməkçi:")
+    parts.append(
+        f"\nİndi bu müştəriyə cavab yaz:\nMüştəri: {customer_message}\n\n"
+        "VACİB: Cavabında YALNIZ köməkçinin sözlərini yaz. 'Müştəri:' və ya "
+        "'Köməkçi:' sözlərini təkrar etmə, mövzudan kənara çıxma, yalnız "
+        "yuxarıdakı konkret müştəri mesajına aid cavab ver."
+    )
 
     return "\n\n".join(parts)
+
+
+def _clean_response(raw_text: str) -> str:
+    """
+    Modelin bəzən təkrarladığı 'Müştəri:' / 'Köməkçi:' etiketlərini təmizləyir.
+    Əgər model formatı təkrarlayıbsa, yalnız son 'Köməkçi:' hissəsindən sonrakı
+    mətni götürür.
+    """
+    text = raw_text.strip()
+
+    # Əgər mətndə "Köməkçi:" təkrarlanıbsa, sonuncusundan sonrakı hissəni götür
+    if "Köməkçi:" in text:
+        text = text.split("Köməkçi:")[-1].strip()
+
+    # Əgər hələ də "Müştəri:" sətri qalıbsa (naməlum format pozuntusu), onu at
+    lines = [
+        line for line in text.split("\n")
+        if not line.strip().startswith("Müştəri:")
+    ]
+    return "\n".join(lines).strip()
 
 
 def generate_support_reply(
@@ -108,6 +133,7 @@ def generate_support_reply(
         user_prompt=user_prompt,
         temperature=0.4,  # dəstək cavabları üçün aşağı temperature = sabit, öngörülən ton
     )
+    result["text"] = _clean_response(result["text"])
     return result
 
 
