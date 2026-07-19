@@ -1,38 +1,43 @@
 # LLM Əsaslı Tətbiq — Checkpoint 1: API İnteqrasiyası
 
+> Bu versiya **Hugging Face Inference API**-dan istifadə edir (pulsuz, kredit kartı tələb etmir).
+
 ## Quraşdırma
 
 ```bash
-pip install anthropic python-dotenv
+pip install requests python-dotenv
 ```
 
-## API açarının konfiqurasiyası
+## API açarının (token) konfiqurasiyası
 
-1. `.env.example` faylını kopyalayıb `.env` adlandırın:
+1. https://huggingface.co/join ünvanında pulsuz hesab yaradın (kart lazım deyil)
+2. https://huggingface.co/settings/tokens ünvanından "Create new token" ilə token yaradın (Read icazəsi kifayətdir)
+3. `.env.example` faylını kopyalayıb `.env` adlandırın:
    ```bash
    cp .env.example .env
    ```
-2. `.env` faylını açıb öz Anthropic API açarınızı yazın:
+4. `.env` faylını açıb öz Hugging Face tokeninizi yazın:
    ```
-   ANTHROPIC_API_KEY=sk-ant-sizin-real-acariniz
+   HF_API_TOKEN=hf_sizin-real-tokeniniz
    ```
-3. **DİQQƏT:** `.env` faylı `.gitignore`-dadır və heç vaxt GitHub-a yüklənmir. Repository-də yalnız `.env.example` (real açar olmadan) saxlanılır.
+5. **DİQQƏT:** `.env` faylı `.gitignore`-dadır və heç vaxt GitHub-a yüklənmir. Repository-də yalnız `.env.example` (real token olmadan) saxlanılır.
 
 ## İşlətmək
 
 ```bash
-python claude_client.py
+python hf_client.py
 ```
 
 ## Necə işləyir
 
-`claude_client.py` faylı `ClaudeClient` adlı bir sinif təqdim edir:
+`hf_client.py` faylı `HFClient` adlı bir sinif təqdim edir:
 
-- API açarı `os.getenv("ANTHROPIC_API_KEY")` ilə environment variable-dan oxunur — **kodun içində heç yerdə hardcode edilməyib**.
-- Açar tapılmadıqda proqram aydın izahlı xəta ilə dayanır (səssiz çökmür).
+- API tokeni `os.getenv("HF_API_TOKEN")` ilə environment variable-dan oxunur — **kodun içində heç yerdə hardcode edilməyib**.
+- Token tapılmadıqda proqram aydın izahlı xəta ilə dayanır (səssiz çökmür).
 - `send_message()` metodu:
-  - Request-i `messages.create()` vasitəsilə düzgün formalaşdırır (model, max_tokens, temperature, system/user promptlar).
-  - Response-dan mətn hissəsini, `stop_reason`-u və `usage` (token) məlumatını ayıraraq strukturlaşdırılmış `dict` şəklində qaytarır.
+  - Request-i Hugging Face Inference API-nin `/models/{model}` endpoint-inə düzgün formalaşdırır (prompt, max_new_tokens, temperature).
+  - Response-un status kodunu yoxlayır, xəta halında aydın mesaj verir.
+  - Cavabdan mətn hissəsini ayıraraq strukturlaşdırılmış `dict` şəklində qaytarır (mətn, model adı, cavab müddəti).
 
 ## Nümunə sorğu/cavab logu
 
@@ -46,27 +51,27 @@ user:   "Salam! Bu sadəcə API inteqrasiyasını yoxlamaq üçün test sorğusu
 **Cavab (nümunə format):**
 ```
 === CAVAB ===
-Salam! Mən Claude adlı süni intellekt köməkçisiyəm və sorğularınıza
-dəqiq, faydalı cavablar verməyə çalışıram.
+Salam! Mən açıq mənbəli süni intellekt köməkçisiyəm və sorğularınıza
+qısa, dəqiq cavablar verməyə çalışıram.
 
 === METADATA ===
-Stop reason: end_turn
-Token istifadəsi: {'input_tokens': 28, 'output_tokens': 24}
+Model: HuggingFaceH4/zephyr-7b-beta
+Cavab müddəti: 2.14 saniyə
 ```
 
-**API açarı olmadıqda gözlənilən xəta (real test nəticəsi):**
+**Token olmadıqda gözlənilən xəta (real test nəticəsi):**
 ```
-OSError: ANTHROPIC_API_KEY tapılmadı. Zəhmət olmasa layihə kökündə
-'.env' faylı yaradın və içinə ANTHROPIC_API_KEY=... əlavə edin
-(nümunə üçün .env.example faylına baxın).
+OSError: HF_API_TOKEN tapılmadı. Zəhmət olmasa layihə kökündə '.env' faylı
+yaradın və içinə HF_API_TOKEN=... əlavə edin. Pulsuz token almaq üçün:
+https://huggingface.co/settings/tokens
 ```
 
 ## Fayl strukturu
 
 ```
 llm-app/
-├── claude_client.py   # Əsas API client (Checkpoint 1)
-├── .env.example       # API açarı nümunəsi (real açar YOX)
+├── hf_client.py       # Əsas API client (Checkpoint 1)
+├── .env.example       # Token nümunəsi (real token YOX)
 ├── .gitignore         # .env faylını repo-dan qoruyur
 └── README.md
 ```
