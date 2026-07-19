@@ -1,0 +1,6 @@
+# Hugging Face API tokeninizi buraya qoyun (bu fayl nümunədir, əsl tokeni .env faylında saxlayın)
+# Pulsuz token almaq üçün: https://huggingface.co/settings/tokens
+HF_API_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# İstəyə bağlı: istifadə olunacaq model
+HF_MODEL=meta-llama/Llama-3.1-8B-Instruct
