@@ -22,6 +22,7 @@ import json
 import time
 import requests
 from dotenv import load_dotenv
+from cost_logger import log_usage
 
 load_dotenv()
 
@@ -140,6 +141,15 @@ class HFClient:
                     raise RuntimeError(f"Hugging Face API cavab xətası: {data['error']}")
 
                 generated_text = data["choices"][0]["message"]["content"]
+
+                # Checkpoint 6: hər uğurlu sorğunun token/cost məlumatını logla
+                log_usage(
+                    prompt_preview=user_prompt,
+                    model=self.model,
+                    usage=data.get("usage"),
+                    elapsed_seconds=round(elapsed, 2),
+                    tag="send_message",
+                )
 
                 return {
                     "text": generated_text.strip(),

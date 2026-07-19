@@ -264,3 +264,47 @@ print(result["title"])      # str
 print(result["summary"])    # str
 print(result["keywords"])   # list[str]
 ```
+
+---
+
+# Checkpoint 6: Əsas Cost/Token Məlumatlılığı
+
+`cost_logger.py` hər API sorğusunun token istifadəsini və təxmini xərcini `logs/usage_log.jsonl` faylına yazır (JSONL formatında — hər sətir ayrı JSON qeydidir, fayl böyüsə də korlanma riski minimaldır).
+
+## İnteqrasiya
+
+`hf_client.py`-dəki `send_message()` metodu **hər uğurlu sorğudan sonra avtomatik** `log_usage()` çağırır — əlavə heç bir kod yazmağa ehtiyac yoxdur, log özü-özünə yaranır.
+
+## Log qeydinin strukturu
+
+Hər sətirdə bu məlumatlar saxlanılır:
+```json
+{
+  "timestamp": "2026-07-19T14:30:18Z",
+  "tag": "send_message",
+  "model": "meta-llama/Llama-3.1-8B-Instruct",
+  "prompt_preview": "Salam! Bu sadəcə API inteqrasiyasını yoxlamaq üçün...",
+  "prompt_tokens": 79,
+  "completion_tokens": 24,
+  "total_tokens": 103,
+  "estimated_cost_usd": 2.3e-06,
+  "elapsed_seconds": 1.34
+}
+```
+
+## Ümumi xərci görmək
+
+```python
+from cost_logger import summarize_usage
+
+print(summarize_usage())
+# {'total_requests': 5, 'total_tokens': 1088, 'total_estimated_cost_usd': 2.3e-05}
+```
+
+## İşlətmək (test)
+
+```bash
+python cost_logger.py
+```
+
+**Qeyd:** `logs/*.jsonl` faylı `.gitignore`-dadır (real log-lar GitHub-a yüklənmir, çünki istifadəçi mesajlarının məzmununu (preview) əks etdirə bilər). Yuxarıdakı nümunə format sənədləşdirmə üçün burada göstərilir.
