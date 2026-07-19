@@ -123,3 +123,9 @@ işləməyə davam edərsə, bu barədə də operatorumuza bildirəcəm.
 - System prompt-un ayrılması modelin davranışını **sabit** saxlayır (hər sorğuda təkrarlanmır).
 - Few-shot nümunələr modelin cavab formatını, uzunluğunu və tonunu **öngörülən** edir — xüsusilə kiçik/açıq modellərdə bu, keyfiyyəti xeyli artırır.
 - `temperature=0.4` seçilib ki, dəstək cavabları həddindən artıq "yaradıcı" olmasın, sabit və peşəkar qalsın.
+
+## Test zamanı aşkarlanan məhdudiyyət (iteration qeydi)
+
+İlk versiyada model bəzən prompt formatını təkrarlayırdı (özü "Müştəri:" sətrini yazırdı). Bunu `build_user_prompt`-a aydın təlimat ("YALNIZ köməkçinin sözlərini yaz") əlavə edərək və `_clean_response()` post-processing funksiyası ilə həll etdik.
+
+Qalan kiçik məhdudiyyət: kiçik open-source model (Llama-3.1-8B) bəzən fərqli mövzulu sorğularda (məsələn rəng problemi) ilk few-shot nümunənin sözlərini ("gecikmə", "sifariş statusu") səhvən köçürür. Bu, real API-lərlə edge-case testinin nümunəsidir — production mühitdə bu, daha güclü model (məs. GPT-4/Claude) və ya daha ciddi output-validasiyası ilə azaldıla bilər.
